@@ -287,6 +287,9 @@ services:
       - modbus-server
       - mosquitto
 
+  # -----------------------------------------------------------
+  # PARTE 3 — InfluxDB Export (Script Python)
+  # -----------------------------------------------------------
   influxdb-export:
     container_name: influxdb-export
     hostname: influxdb-export
@@ -298,10 +301,43 @@ services:
     networks:
       - edgex-network
     environment:
+      PYTHONUNBUFFERED: "1"
       CONFIG_FILE: /app/influx/configuration.yaml
+      MQTT_HOST: edgex-mosquitto
+      MQTT_PORT: 1884
+      MQTT_TOPIC: modbus/factory/sensors
+      INFLUX_URL: "http://edgex-influxdb:8086"
+      INFLUX_TOKEN: "edgex-influx-token-2024"
+      INFLUX_ORG: "edgex-org"
+      INFLUX_BUCKET: "factory"
+      INFLUX_MEASUREMENT: "factory_sensors"
     depends_on:
       - mosquitto
       - influxdb
+
+  # -----------------------------------------------------------
+  # PARTE 3 — InfluxDB (base de dados de séries temporais)
+  # -----------------------------------------------------------
+
+
+  # -----------------------------------------------------------
+  # PARTE 3 — InfluxDB Export (removido, substituído por app-service-influxdb)
+  # -----------------------------------------------------------
+  # influxdb-export:
+  #   container_name: influxdb-export
+  #   hostname: influxdb-export
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.python-app
+  #   command: python influx/subscriber.py
+  #   restart: always
+  #   networks:
+  #     - edgex-network
+  #   environment:
+  #     CONFIG_FILE: /app/influx/configuration.yaml
+  #   depends_on:
+  #     - mosquitto
+  #     - influxdb
 
 networks:
   edgex-network:
