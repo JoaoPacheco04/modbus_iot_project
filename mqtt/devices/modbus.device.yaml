@@ -1,0 +1,21 @@
+deviceList:
+  - name: "modbus-factory-device"
+    profileName: "modbus-factory-profile"
+    description: "Servidor Modbus TCP simulado pelo modbus-server"
+    labels:
+      - "modbus"
+      - "factory"
+      - "simulation"
+
+    protocols:
+      modbus-tcp:
+        Address: "modbus-server"
+        Port: "1502"
+        UnitID: "1"
+        Timeout: "5"
+        IdleTimeout: "5"
+
+    autoEvents:
+      - interval: "5s"
+        onChange: false
+        sourceName: "all_sensors"

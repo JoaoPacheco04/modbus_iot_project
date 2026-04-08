@@ -1,0 +1,6 @@
+Writable:
+  LogLevel: "INFO"
+
+Device:
+  ProfilesDir: "/custom-config/profiles"
+  DevicesDir: "/custom-config/devices"

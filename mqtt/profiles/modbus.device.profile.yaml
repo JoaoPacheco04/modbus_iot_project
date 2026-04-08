@@ -1,0 +1,46 @@
+name: "modbus-factory-profile"
+manufacturer: "Simulado"
+model: "ModbusTCP-v1"
+description: "Perfil para dispositivo Modbus TCP simulado"
+
+deviceResources:
+  - name: "temperature"
+    description: "Temperatura em graus Celsius (registo x10)"
+    properties:
+      valueType: "Float32"
+      readWrite: "R"
+      scale: 0.1
+      units: "C"
+    attributes:
+      primaryTable: "HOLDING_REGISTERS"
+      startingAddress: 0
+      rawType: "Int16"
+
+  - name: "pressure"
+    description: "Pressao em bar (registo x10)"
+    properties:
+      valueType: "Float32"
+      readWrite: "R"
+      scale: 0.1
+      units: "bar"
+    attributes:
+      primaryTable: "HOLDING_REGISTERS"
+      startingAddress: 1
+      rawType: "Int16"
+
+  - name: "machine_state"
+    description: "Estado da maquina: 0=parado, 1=a correr"
+    properties:
+      valueType: "Uint16"
+      readWrite: "R"
+    attributes:
+      primaryTable: "HOLDING_REGISTERS"
+      startingAddress: 2
+
+deviceCommands:
+  - name: "all_sensors"
+    readWrite: "R"
+    resourceOperations:
+      - deviceResource: "temperature"
+      - deviceResource: "pressure"
+      - deviceResource: "machine_state"

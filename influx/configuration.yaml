@@ -1,0 +1,11 @@
+mqtt:
+  host: "edgex-mosquitto"
+  port: 1884
+  topic: "modbus/factory/sensors"
+
+influxdb:
+  url: "http://edgex-influxdb:8086"
+  token: "edgex-influx-token-2024"
+  org: "edgex-org"
+  bucket: "factory"
+  measurement: "factory_sensors"
