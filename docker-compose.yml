@@ -206,14 +206,9 @@ services:
     environment:
       MODBUS_HOST: modbus-server
       MODBUS_PORT: "1502"
-      MQTT_HOST:   edgex-mosquitto
-      MQTT_PORT:   "1884"
-      MQTT_TOPIC:  modbus/factory/sensors
       INTERVALO:   "5"
     depends_on:
       modbus-server:
-        condition: service_started
-      mosquitto:
         condition: service_started
 
   # -----------------------------------------------------------
@@ -343,7 +338,7 @@ services:
       CONFIG_FILE:        /app/influx/configuration.yaml
       MQTT_HOST:          edgex-mosquitto
       MQTT_PORT:          "1884"
-      MQTT_TOPIC:         "edgex/factory/sensors,modbus/factory/sensors"
+      MQTT_TOPIC:         "edgex/factory/sensors"
       INFLUX_URL:         "http://edgex-influxdb:8086"
       INFLUX_TOKEN:       ${INFLUXDB_TOKEN}
       INFLUX_ORG:         ${INFLUXDB_ORG}
