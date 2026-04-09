@@ -1,11 +1,23 @@
 # =============================================================
 #  Projeto IoT — Modbus + EdgeX + MQTT + InfluxDB
+#
+#  Fluxo principal (EdgeX):
+#    modbus-server → device-modbus → core-data → app-service
+#    → mosquitto (edgex/factory/sensors) → influxdb-export → influxdb
+#
+#  Fluxo secundário (Python, Parte 2):
+#    modbus-server → modbus-client → mosquitto (modbus/factory/sensors)
+#    → influxdb-export → influxdb
+#
 #  Arranque: docker compose up -d
 # =============================================================
 name: modbus-iot
 
 services:
 
+  # -----------------------------------------------------------
+  # PARTE 1 — Servidor Modbus TCP simulado
+  # -----------------------------------------------------------
   modbus-server:
     container_name: modbus-server
     hostname: modbus-server
@@ -23,7 +35,7 @@ services:
       - "1502:1502"
 
   # -----------------------------------------------------------
-  # BASE EDGEX — obrigatório para tudo funcionar
+  # BASE EDGEX
   # -----------------------------------------------------------
   database:
     container_name: edgex-postgres
@@ -34,7 +46,7 @@ services:
       - edgex-network
     environment:
       POSTGRES_DB:       edgex_db
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - db-data:/var/lib/postgresql/data
       - /etc/localtime:/etc/localtime:ro
@@ -70,8 +82,10 @@ services:
     ports:
       - "127.0.0.1:59890:59890"
     depends_on:
-      - database
-      - mqtt-broker
+      database:
+        condition: service_started
+      mqtt-broker:
+        condition: service_started
     volumes:
       - /etc/localtime:/etc/localtime:ro
 
@@ -82,18 +96,19 @@ services:
     networks:
       - edgex-network
     environment:
-      EDGEX_SECURITY_SECRET_STORE:               "false"
-      ALL_SERVICES_DATABASE_HOST:                edgex-postgres
-      ALL_SERVICES_MESSAGEBUS_HOST:              edgex-mqtt-broker
-      ALL_SERVICES_REGISTRY_HOST:                edgex-core-keeper
-      APP_SERVICES_CLIENTS_CORE_METADATA_HOST:   edgex-core-metadata
+      EDGEX_SECURITY_SECRET_STORE:                "false"
+      ALL_SERVICES_DATABASE_HOST:                 edgex-postgres
+      ALL_SERVICES_MESSAGEBUS_HOST:               edgex-mqtt-broker
+      ALL_SERVICES_REGISTRY_HOST:                 edgex-core-keeper
+      APP_SERVICES_CLIENTS_CORE_METADATA_HOST:    edgex-core-metadata
       DEVICE_SERVICES_CLIENTS_CORE_METADATA_HOST: edgex-core-metadata
     command:
       - /core-common-config-bootstrapper
       - --registry
       - -cp=keeper.http://edgex-core-keeper:59890
     depends_on:
-      - core-keeper
+      core-keeper:
+        condition: service_started
     volumes:
       - /etc/localtime:/etc/localtime:ro
 
@@ -113,9 +128,12 @@ services:
     ports:
       - "127.0.0.1:59881:59881"
     depends_on:
-      - core-keeper
-      - core-common-config-bootstrapper
-      - database
+      core-keeper:
+        condition: service_started
+      core-common-config-bootstrapper:
+        condition: service_started
+      database:
+        condition: service_started
     volumes:
       - /etc/localtime:/etc/localtime:ro
 
@@ -135,9 +153,12 @@ services:
     ports:
       - "127.0.0.1:59880:59880"
     depends_on:
-      - core-keeper
-      - core-common-config-bootstrapper
-      - database
+      core-keeper:
+        condition: service_started
+      core-common-config-bootstrapper:
+        condition: service_started
+      database:
+        condition: service_started
     volumes:
       - /etc/localtime:/etc/localtime:ro
 
@@ -150,122 +171,28 @@ services:
       - edgex-network
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
-      SERVICE_HOST:      edgex-core-command
-      EXTERNALMQTT_URL:  tcp://edgex-mqtt-broker:1883
+      SERVICE_HOST:     edgex-core-command
+      EXTERNALMQTT_URL: tcp://edgex-mqtt-broker:1883
     command:
       - --registry
       - -cp=keeper.http://edgex-core-keeper:59890
     ports:
       - "127.0.0.1:59882:59882"
     depends_on:
-      - core-keeper
-      - core-common-config-bootstrapper
-      - core-metadata
-      - database
+      core-keeper:
+        condition: service_started
+      core-common-config-bootstrapper:
+        condition: service_started
+      core-metadata:
+        condition: service_started
+      database:
+        condition: service_started
     volumes:
       - /etc/localtime:/etc/localtime:ro
 
   # -----------------------------------------------------------
-  # PARTE 2 — Device Service Modbus (lê o server.py)
+  # PARTE 2 — Cliente Modbus Python (fluxo secundário)
   # -----------------------------------------------------------
-  device-modbus:
-    container_name: edgex-device-modbus
-    hostname: edgex-device-modbus
-    image: edgexfoundry/device-modbus:4.0.0
-    restart: always
-    networks:
-      - edgex-network
-    environment:
-      EDGEX_SECURITY_SECRET_STORE: "false"
-      SERVICE_HOST: edgex-device-modbus
-      DEVICE_PROFILESDIR: /custom-config/profiles
-      DEVICE_DEVICESDIR: /custom-config/devices
-    command:
-      - --registry
-      - -cp=keeper.http://edgex-core-keeper:59890
-    volumes:
-      - ./mqtt/profiles:/custom-config/profiles
-      - ./mqtt/devices:/custom-config/devices
-      - /etc/localtime:/etc/localtime:ro
-    ports:
-      - "127.0.0.1:59901:59901"
-    depends_on:
-      - core-keeper
-      - core-common-config-bootstrapper
-      - core-data
-      - core-metadata
-      - modbus-server
-
-  # -----------------------------------------------------------
-  # PARTE 3 — App Service (exporta EdgeX → MQTT externo)
-  # -----------------------------------------------------------
-  app-service-mqtt-export:
-    container_name: edgex-app-service-mqtt-export
-    hostname: edgex-app-service-mqtt-export
-    image: edgexfoundry/app-service-configurable:4.0.0
-    restart: always
-    networks:
-      - edgex-network
-    environment:
-      EDGEX_SECURITY_SECRET_STORE: "false"
-      EDGEX_PROFILE:   mqtt-export
-      SERVICE_HOST:    edgex-app-service-mqtt-export
-      # Publica no Mosquitto externo
-      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_BROKERADDRESS: "tcp://edgex-mosquitto:1884"
-      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_TOPIC: "edgex/factory/sensors"
-      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_CLIENTID: "edgex-export"
-      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_QOS: "0"
-      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_AUTORECONNECT: "true"
-    command:
-      - --registry
-      - -cp=keeper.http://edgex-core-keeper:59890
-    depends_on:
-      - core-keeper
-      - core-common-config-bootstrapper
-      - core-data
-      - mosquitto
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-
-  # -----------------------------------------------------------
-  # PARTE 3 — Mosquitto externo (broker MQTT acessível fora)
-  # -----------------------------------------------------------
-  mosquitto:
-    container_name: edgex-mosquitto
-    hostname: edgex-mosquitto
-    image: eclipse-mosquitto:2.0.21
-    restart: always
-    networks:
-      - edgex-network
-    ports:
-      - "1884:1884"   # acessível na tua máquina em localhost:1884
-    volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - mosquitto-data:/mosquitto/data
-      - mosquitto-log:/mosquitto/log
-
-  # -----------------------------------------------------------
-  # PARTE 3 — InfluxDB (base de dados de séries temporais)
-  # -----------------------------------------------------------
-  influxdb:
-    container_name: edgex-influxdb
-    hostname: edgex-influxdb
-    image: influxdb:2.7
-    restart: always
-    networks:
-      - edgex-network
-    ports:
-      - "8086:8086"   # UI em http://localhost:8086
-    environment:
-      DOCKER_INFLUXDB_INIT_MODE:         setup
-      DOCKER_INFLUXDB_INIT_USERNAME:     admin
-      DOCKER_INFLUXDB_INIT_PASSWORD:     password123
-      DOCKER_INFLUXDB_INIT_ORG:          edgex-org
-      DOCKER_INFLUXDB_INIT_BUCKET:       factory
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN:  edgex-influx-token-2024
-    volumes:
-      - influxdb-data:/var/lib/influxdb2
-
   modbus-client:
     container_name: modbus-client
     hostname: modbus-client
@@ -279,16 +206,127 @@ services:
     environment:
       MODBUS_HOST: modbus-server
       MODBUS_PORT: "1502"
-      MQTT_HOST: edgex-mosquitto
-      MQTT_PORT: "1884"
-      MQTT_TOPIC: modbus/factory/sensors
-      INTERVALO: "5"
+      MQTT_HOST:   edgex-mosquitto
+      MQTT_PORT:   "1884"
+      MQTT_TOPIC:  modbus/factory/sensors
+      INTERVALO:   "5"
     depends_on:
-      - modbus-server
-      - mosquitto
+      modbus-server:
+        condition: service_started
+      mosquitto:
+        condition: service_started
 
   # -----------------------------------------------------------
-  # PARTE 3 — InfluxDB Export (Script Python)
+  # PARTE 2 — Device Service EdgeX (fluxo principal)
+  # -----------------------------------------------------------
+  device-modbus:
+    container_name: edgex-device-modbus
+    hostname: edgex-device-modbus
+    image: edgexfoundry/device-modbus:4.0.0
+    restart: always
+    networks:
+      - edgex-network
+    environment:
+      EDGEX_SECURITY_SECRET_STORE: "false"
+      SERVICE_HOST:       edgex-device-modbus
+      DEVICE_PROFILESDIR: /custom-config/profiles
+      DEVICE_DEVICESDIR:  /custom-config/devices
+    command:
+      - --registry
+      - -cp=keeper.http://edgex-core-keeper:59890
+    volumes:
+      - ./mqtt/profiles:/custom-config/profiles
+      - ./mqtt/devices:/custom-config/devices
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "127.0.0.1:59901:59901"
+    depends_on:
+      core-keeper:
+        condition: service_started
+      core-common-config-bootstrapper:
+        condition: service_started
+      core-data:
+        condition: service_started
+      core-metadata:
+        condition: service_started
+      modbus-server:
+        condition: service_started
+
+  # -----------------------------------------------------------
+  # PARTE 3 — Mosquitto externo
+  # -----------------------------------------------------------
+  mosquitto:
+    container_name: edgex-mosquitto
+    hostname: edgex-mosquitto
+    image: eclipse-mosquitto:2.0.21
+    restart: always
+    networks:
+      - edgex-network
+    ports:
+      - "1884:1884"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+
+  # -----------------------------------------------------------
+  # PARTE 3 — App Service EdgeX → Mosquitto externo
+  # -----------------------------------------------------------
+  app-service-mqtt-export:
+    container_name: edgex-app-service-mqtt-export
+    hostname: edgex-app-service-mqtt-export
+    image: edgexfoundry/app-service-configurable:4.0.0
+    restart: always
+    networks:
+      - edgex-network
+    environment:
+      EDGEX_SECURITY_SECRET_STORE: "false"
+      EDGEX_PROFILE:  mqtt-export
+      SERVICE_HOST:   edgex-app-service-mqtt-export
+      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_BROKERADDRESS: "tcp://edgex-mosquitto:1884"
+      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_TOPIC:         "edgex/factory/sensors"
+      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_CLIENTID:      "edgex-export"
+      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_QOS:           "0"
+      WRITABLE_PIPELINE_FUNCTIONS_MQTTEXPORT_PARAMETERS_AUTORECONNECT: "true"
+    command:
+      - --registry
+      - -cp=keeper.http://edgex-core-keeper:59890
+    depends_on:
+      core-keeper:
+        condition: service_started
+      core-common-config-bootstrapper:
+        condition: service_started
+      core-data:
+        condition: service_started
+      mosquitto:
+        condition: service_started
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+  # -----------------------------------------------------------
+  # PARTE 3 — InfluxDB
+  # -----------------------------------------------------------
+  influxdb:
+    container_name: edgex-influxdb
+    hostname: edgex-influxdb
+    image: influxdb:2.7
+    restart: always
+    networks:
+      - edgex-network
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE:        setup
+      DOCKER_INFLUXDB_INIT_USERNAME:    ${INFLUXDB_USERNAME}
+      DOCKER_INFLUXDB_INIT_PASSWORD:    ${INFLUXDB_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG:         ${INFLUXDB_ORG}
+      DOCKER_INFLUXDB_INIT_BUCKET:      ${INFLUXDB_BUCKET}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+
+  # -----------------------------------------------------------
+  # PARTE 3 — Subscriber Python: Mosquitto → InfluxDB
   # -----------------------------------------------------------
   influxdb-export:
     container_name: influxdb-export
@@ -302,42 +340,24 @@ services:
       - edgex-network
     environment:
       PYTHONUNBUFFERED: "1"
-      CONFIG_FILE: /app/influx/configuration.yaml
-      MQTT_HOST: edgex-mosquitto
-      MQTT_PORT: 1884
-      MQTT_TOPIC: modbus/factory/sensors
-      INFLUX_URL: "http://edgex-influxdb:8086"
-      INFLUX_TOKEN: "edgex-influx-token-2024"
-      INFLUX_ORG: "edgex-org"
-      INFLUX_BUCKET: "factory"
+      CONFIG_FILE:        /app/influx/configuration.yaml
+      MQTT_HOST:          edgex-mosquitto
+      MQTT_PORT:          "1884"
+      MQTT_TOPIC:         "edgex/factory/sensors,modbus/factory/sensors"
+      INFLUX_URL:         "http://edgex-influxdb:8086"
+      INFLUX_TOKEN:       ${INFLUXDB_TOKEN}
+      INFLUX_ORG:         ${INFLUXDB_ORG}
+      INFLUX_BUCKET:      ${INFLUXDB_BUCKET}
       INFLUX_MEASUREMENT: "factory_sensors"
     depends_on:
-      - mosquitto
-      - influxdb
-
-  # -----------------------------------------------------------
-  # PARTE 3 — InfluxDB (base de dados de séries temporais)
-  # -----------------------------------------------------------
-
-
-  # -----------------------------------------------------------
-  # PARTE 3 — InfluxDB Export (removido, substituído por app-service-influxdb)
-  # -----------------------------------------------------------
-  # influxdb-export:
-  #   container_name: influxdb-export
-  #   hostname: influxdb-export
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.python-app
-  #   command: python influx/subscriber.py
-  #   restart: always
-  #   networks:
-  #     - edgex-network
-  #   environment:
-  #     CONFIG_FILE: /app/influx/configuration.yaml
-  #   depends_on:
-  #     - mosquitto
-  #     - influxdb
+      mosquitto:
+        condition: service_started
+      influxdb:
+        condition: service_started
+      modbus-client:
+        condition: service_started
+      app-service-mqtt-export:
+        condition: service_started
 
 networks:
   edgex-network:
@@ -349,4 +369,3 @@ volumes:
   influxdb-data:
   mosquitto-data:
   mosquitto-log:
-  grafana-data:
