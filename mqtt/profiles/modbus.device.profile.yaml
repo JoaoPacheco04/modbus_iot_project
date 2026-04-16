@@ -13,7 +13,7 @@ deviceResources:
       units: "C"
     attributes:
       primaryTable: "HOLDING_REGISTERS"
-      startingAddress: 1
+      startingAddress: 0
       rawType: "Int16"
 
   - name: "pressure"
@@ -25,7 +25,7 @@ deviceResources:
       units: "bar"
     attributes:
       primaryTable: "HOLDING_REGISTERS"
-      startingAddress: 2
+      startingAddress: 1
       rawType: "Int16"
 
   - name: "machine_state"
@@ -35,7 +35,7 @@ deviceResources:
       readWrite: "R"
     attributes:
       primaryTable: "HOLDING_REGISTERS"
-      startingAddress: 3
+      startingAddress: 2
 
 deviceCommands:
   - name: "all_sensors"

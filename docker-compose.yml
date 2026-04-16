@@ -5,7 +5,7 @@
 #    modbus-server → device-modbus → core-data → app-service
 #    → mosquitto (edgex/factory/sensors) → influxdb-export → influxdb
 #
-#  Fluxo secundário (Python, Parte 2):
+#  Fluxo secundário (Python, Parte 2+3):
 #    modbus-server → modbus-client → mosquitto (modbus/factory/sensors)
 #    → influxdb-export → influxdb
 #
@@ -191,7 +191,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
 
   # -----------------------------------------------------------
-  # PARTE 2 — Cliente Modbus Python (fluxo secundário)
+  # PARTE 2+3 — Cliente Modbus Python + publicação MQTT
   # -----------------------------------------------------------
   modbus-client:
     container_name: modbus-client
@@ -204,11 +204,17 @@ services:
     networks:
       - edgex-network
     environment:
+      PYTHONUNBUFFERED: "1"
       MODBUS_HOST: modbus-server
       MODBUS_PORT: "1502"
       INTERVALO:   "5"
+      MQTT_HOST:   edgex-mosquitto
+      MQTT_PORT:   "1884"
+      MQTT_TOPIC:  "modbus/factory/sensors"
     depends_on:
       modbus-server:
+        condition: service_started
+      mosquitto:
         condition: service_started
 
   # -----------------------------------------------------------
@@ -338,7 +344,7 @@ services:
       CONFIG_FILE:        /app/influx/configuration.yaml
       MQTT_HOST:          edgex-mosquitto
       MQTT_PORT:          "1884"
-      MQTT_TOPIC:         "edgex/factory/sensors"
+      MQTT_TOPIC:         "edgex/factory/sensors,modbus/factory/sensors"
       INFLUX_URL:         "http://edgex-influxdb:8086"
       INFLUX_TOKEN:       ${INFLUXDB_TOKEN}
       INFLUX_ORG:         ${INFLUXDB_ORG}

@@ -1,7 +1,7 @@
 mqtt:
   host: "edgex-mosquitto"
   port: 1884
-  topic: "modbus/factory/sensors"
+  topic: "edgex/factory/sensors,modbus/factory/sensors"
 
 influxdb:
   url: "http://edgex-influxdb:8086"
