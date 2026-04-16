@@ -323,6 +323,12 @@ services:
       DOCKER_INFLUXDB_INIT_ORG:         ${INFLUXDB_ORG}
       DOCKER_INFLUXDB_INIT_BUCKET:      ${INFLUXDB_BUCKET}
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN}
+    healthcheck:
+      test: ["CMD", "influx", "ping", "--host", "http://localhost:8086"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     volumes:
       - influxdb-data:/var/lib/influxdb2
 
@@ -354,7 +360,7 @@ services:
       mosquitto:
         condition: service_started
       influxdb:
-        condition: service_started
+        condition: service_healthy
       modbus-client:
         condition: service_started
       app-service-mqtt-export:
